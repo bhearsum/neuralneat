@@ -11,6 +11,7 @@ documentation = "https://docs.rs/neuralneat"
 readme = "README.md"
 keywords = ["neuralnetwork", "#machinelearning"]
 categories = ["science"]
+exclude = [".gitignore", ".github/*"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
