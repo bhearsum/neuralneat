@@ -2,6 +2,15 @@
 name = "neuralneat"
 version = "0.1.0"
 edition = "2021"
+license-file = "LICENSE"
+authors = ["Ben Hearsum <ben@hearsum.ca>"]
+description = "An implementation of Kenneth Stanley's NeuroEvolution of Augmenting Topologies"
+homepage = "https://github.com/bhearsum/neuralneat"
+repository = "https://github.com/bhearsum/neuralneat"
+documentation = "https://docs.rs/neuralneat"
+readme = "README.md"
+keywords = ["neuralnetwork", "#machinelearning"]
+categories = ["science"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -12,7 +21,3 @@ petgraph = { version = "0.6.3", features = ["serde-1"] }
 rand = "0.8.5"
 serde = { version = "1.0.171", features = ["derive"] }
 serde_json = "1.0.103"
-
-[lib]
-name = "neuralneat"
-path = "src/lib.rs"
