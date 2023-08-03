@@ -8,281 +8,25 @@ use serde_json;
 use std::env;
 use std::fs::File;
 
-#[derive(Debug)]
-struct TrainingData {
-    input1: f32,
-    input2: f32,
-    expected: bool,
-}
+#[path = "common/lib.rs"]
+mod common;
+use common::load_training_data;
 
-// This data will be fed to each genome as part of training.
-const TRAINING_DATA: [TrainingData; 50] = [
-    TrainingData {
-        input1: -12.0,
-        input2: 5.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: -5.0,
-        input2: 5.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: 0.0,
-        input2: 5.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: 2.0,
-        input2: 5.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: 3.0,
-        input2: 5.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: 5.7,
-        input2: 5.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: 9.0,
-        input2: 5.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: 15.0,
-        input2: 5.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: 25.0,
-        input2: 5.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: 30.0,
-        input2: 5.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: -12.0,
-        input2: -8.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: -5.0,
-        input2: -8.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: 0.0,
-        input2: -8.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: 2.0,
-        input2: -8.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: 3.0,
-        input2: -8.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: 5.7,
-        input2: -8.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: 9.0,
-        input2: -8.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: 15.0,
-        input2: -8.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: 25.0,
-        input2: -8.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: 30.0,
-        input2: -8.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: -12.0,
-        input2: 18.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: -5.0,
-        input2: 18.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: 0.0,
-        input2: 18.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: 2.0,
-        input2: 18.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: 3.0,
-        input2: 18.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: 5.7,
-        input2: 18.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: 9.0,
-        input2: 18.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: 15.0,
-        input2: 18.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: 25.0,
-        input2: 18.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: 30.0,
-        input2: 18.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: -12.0,
-        input2: -50.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: -5.0,
-        input2: -50.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: 0.0,
-        input2: -50.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: 2.0,
-        input2: -50.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: 3.0,
-        input2: -50.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: 5.7,
-        input2: -50.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: 9.0,
-        input2: -50.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: 15.0,
-        input2: -50.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: 25.0,
-        input2: -50.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: 30.0,
-        input2: -50.0,
-        expected: true,
-    },
-    TrainingData {
-        input1: -12.0,
-        input2: 50.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: -5.0,
-        input2: 50.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: 0.0,
-        input2: 50.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: 2.0,
-        input2: 50.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: 3.0,
-        input2: 50.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: 5.7,
-        input2: 50.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: 9.0,
-        input2: 50.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: 15.0,
-        input2: 50.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: 25.0,
-        input2: 50.0,
-        expected: false,
-    },
-    TrainingData {
-        input1: 30.0,
-        input2: 50.0,
-        expected: false,
-    },
-];
-
+const TRAINING_DATA_STRING: &str = include_str!("compare.csv");
 const PERFECT_SCORE: f32 = 50.0;
 
 // This fitness function is used to "score" each genome. Higher scores are
 // better ("more fit"), and the genomes with the highest fitness are used
 // as "parents" in the next generation, with the lower scoring genomes being
 // thrown away.
-fn fitness_func(prediction: f32, expected: bool) -> f32 {
+fn fitness_func(prediction: f32, expected: f32) -> f32 {
     // Our prediction comes in as the raw genome output value - which is
     // guaranteed to be between 0.0 and 1.0. We define the top half of this
     // range to mean "input1 is greater than input2". Therefore, if both
     // this comparison and the expected value or true (or if both are false)
     // - the genome got the right answer for the test data is just tried.
     // This is success, and it gets to increase its fitness!
-    if (prediction > 0.5) == expected {
+    if (prediction > 0.5) && expected == 1.0 {
         return 1.0;
     }
     // If not, it got the wrong answer, and gets a score of zero.
@@ -306,6 +50,8 @@ fn main() {
         // Create a new gene pool with an initial population of genomes
         let mut gene_pool = Pool::with_defaults(input_nodes, output_nodes);
 
+        let training_data = load_training_data(TRAINING_DATA_STRING, 4, 1);
+
         // These variables are used to keep track of the top performer, so we
         // can write it out later.
         let mut best_genome: Option<Genome> = None;
@@ -323,15 +69,15 @@ fn main() {
                     let genome = &mut species[g];
                     let mut fitness = 0.0;
 
-                    for td in TRAINING_DATA {
+                    for td in &training_data {
                         // Evaluate the genome using the training data as the
                         // initial inputs.
-                        genome.evaluate(&vec![td.input1, td.input2], None, None);
+                        genome.evaluate(&td.inputs[0..2].to_vec(), None, None);
 
                         // We add this to the existing fitness for the genome
                         // to ensure that the genomes with the best score across
                         // all tests will have the highest overall fitness.
-                        fitness += fitness_func(genome.get_outputs()[0], td.expected);
+                        fitness += fitness_func(genome.get_outputs()[0], td.expected[0]);
                     }
 
                     // Update the genome with the calculate fitness score.

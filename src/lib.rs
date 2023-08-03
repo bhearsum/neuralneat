@@ -7,12 +7,14 @@
 //! Much of this implementation was also guided by the [NEAT 1.2.1 source code](
 //! https://nn.cs.utexas.edu/?neat).
 
-/// The [activation] module contains basic activation functions that can be
-/// used with hidden and output layers of a Genome.
-pub mod activation;
 /// The [defaults] module contains the default values of all of the constants
 /// used by the [Pool] to create, mutate, and mate [Genomes](Genome).
 pub mod defaults;
+/// The [evaluation] module contains functions and types related to the process
+/// of evaluating and activating the neural network of a [Genome], such as
+/// basic activation functions that can be used with hidden and output layers
+/// of a [Genome].
+pub mod evaluation;
 mod genome;
 mod pool;
 mod species;
