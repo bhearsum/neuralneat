@@ -3,6 +3,7 @@ use std::fmt;
 use std::ops::{Index, IndexMut};
 
 use crate::defaults::*;
+use crate::evaluation::{ActivationFn, EvaluationFn, TrainingData};
 use crate::genome::Genome;
 use crate::species::{Species, SpeciesStats};
 
@@ -146,6 +147,61 @@ impl Pool {
         );
     }
 
+    /// Trains a population of [Genomes](Genome) over `generations` generations.
+    /// `training_data` must be a &Vec of [TrainingData]. Each [Genome] will be
+    /// gevn the [inputs](TrainingData::inputs) from each [TrainingData] as inputs
+    /// to its network. `evaluate_fn` will be called after each item of [TrainingData]
+    /// is fed to the [Genome]. This function will be passed a Vec of the [Genome]'s
+    /// outputs and the [expected](TrainingData::expected) value or values from the
+    /// [TrainingData]. This function is expected to assess the [Genome]'s performance
+    /// by comparing the two, and return an f32 representing its "score". The scores
+    /// from each call to `evaluate_fn` will be summed together to form the final
+    /// fitness value of the [Genome].
+    pub fn train_population(
+        &mut self,
+        generations: usize,
+        training_data: &Vec<TrainingData>,
+        evaluate_fn: EvaluationFn,
+        hidden_activation: Option<ActivationFn>,
+        output_activation: Option<ActivationFn>,
+    ) {
+        let mut best_fitness = 0.0;
+
+        for generation in 0..generations {
+            info!("Evaluating generation {}", generation + 1);
+            let total_species = self.len();
+            for s in 0..total_species {
+                let species = &mut self[s];
+                let genomes_in_species = species.len();
+                for g in 0..genomes_in_species {
+                    let genome = &mut species[g];
+
+                    let mut fitness = 0.0;
+
+                    // let mut td = training_data.next();
+                    // while td.is_some() {
+                    for td in training_data {
+                        genome.evaluate(&td.inputs, hidden_activation, output_activation);
+                        fitness += evaluate_fn(&genome.get_outputs(), &td.expected);
+                        // td = training_data.next();
+                    }
+
+                    genome.update_fitness(fitness);
+
+                    if fitness > best_fitness {
+                        info!(
+                            "Species {} Genome {} increased best fitness to {}",
+                            s, g, best_fitness
+                        );
+                        best_fitness = fitness;
+                    }
+                }
+            }
+            // Spawn the next generation.
+            self.new_generation();
+        }
+    }
+
     /// Returns the [PoolStats] at a moment in time. (If you need updated
     /// statistics you must call this method each time you need them.)
     pub fn stats(&self) -> PoolStats {
@@ -168,6 +224,32 @@ impl Pool {
     /// will always return the real number of [Genomes](Genome) in the Pool.
     pub fn population_size(&self) -> usize {
         return self.species.iter().map(|s| s.genomes.len()).sum::<usize>();
+    }
+
+    /// Returns the best [Genome] in the current population. (Earlier
+    /// generations could theoretically have had a better [Genome]. If it is
+    /// important to have the best [Genome] _ever_, you should call this method
+    /// once per generation to check each generation's best [Genome].)
+    pub fn get_best_genome(&self) -> Genome {
+        let best_species = self.species.iter().reduce(|s1, s2| {
+            if s1.max_fitness > s2.max_fitness {
+                return s1;
+            }
+            return s2;
+        });
+        let best_genome = best_species
+            .unwrap()
+            .genomes
+            .iter()
+            .reduce(|g1, g2| {
+                if g1.max_fitness > g2.max_fitness {
+                    return g1;
+                }
+                return g2;
+            })
+            .unwrap();
+
+        return best_genome.clone();
     }
 
     /// Spawn the next generation of [Genomes](Genome). This should only be
@@ -416,5 +498,65 @@ impl fmt::Debug for Pool {
             self.population_size(),
             self.species
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn new_genome(inputs: usize, outputs: usize, inno: &mut u64) -> Genome {
+        return Genome::new(inputs, outputs, inno, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    }
+
+    #[test]
+    fn test_get_best_genome() {
+        let mut innovation = 0;
+        let mut s = Species::empty();
+        s.genomes = [50.0, 30.0, 10.0, 70.0, 40.0, 20.0, 100.0, 5.0]
+            .iter()
+            .map(|f| {
+                let mut g = new_genome(1, 1, &mut innovation);
+                g.max_fitness = *f;
+                return g;
+            })
+            .collect();
+        let mut s2 = Species::empty();
+        s2.genomes = [5.0, 13.0, 1.0, 80.0, 40.0, 30.0, 20.0]
+            .iter()
+            .map(|f| {
+                let mut g = new_genome(1, 1, &mut innovation);
+                g.max_fitness = *f;
+                return g;
+            })
+            .collect();
+        let pool = Pool {
+            population_size: 8,
+            connection_mut_rate: DEFAULT_CONNECTION_MUTATION_CHANCE,
+            node_mut_rate: DEFAULT_NODE_MUTATION_CHANCE,
+            weight_mut_rate: DEFAULT_WEIGHT_MUTATION_CHANCE,
+            perturb_rate: DEFAULT_PERTURB_CHANCE,
+            weight_mut_step_size: DEFAULT_WEIGHT_STEP_SIZE,
+            disable_mut_rate: DEFAULT_DISABLE_NODE_MUTATION_CHANCE,
+            enable_mut_rate: DEFAULT_ENABLE_NODE_MUTATION_CHANCE,
+            excess_coef: DEFAULT_EXCESS_COEFFICIENT,
+            disjoint_coef: DEFAULT_DISJOINT_COEFFICIENT,
+            weight_diff_coef: DEFAULT_WEIGHT_DIFF_COEFFICIENT,
+            species_threshold: DEFAULT_SPECIES_THRESHOLD,
+            mut_only_rate: DEFAULT_MUTATE_ONLY_RATE,
+            mate_only_rate: DEFAULT_MATE_ONLY_RATE,
+            crossover_rate: DEFAULT_CROSSOVER_CHANCE,
+            species_dropoff_age: DEFAULT_DROPOFF_AGE,
+            age_significance: DEFAULT_AGE_SIGNIFICANCE,
+            survival_threshold: DEFAULT_SURVIVAL_THRESHOLD,
+            species: vec![s],
+            innovation: 0,
+            max_fitness: 0.0,
+            max_fitness_ever: 0.0,
+            avg_fitness: 0.0,
+            generation: 0,
+        };
+        let best_genome = pool.get_best_genome();
+        assert_eq!(best_genome.max_fitness, 100.0);
     }
 }

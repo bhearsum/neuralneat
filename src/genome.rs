@@ -8,7 +8,7 @@ use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use crate::activation::{sigmoid, ActivationFn};
+use crate::evaluation::{sigmoid, ActivationFn};
 
 fn should_mutate(chance: f32) -> bool {
     return (rand::thread_rng().gen_range(0..100) as f32) < (chance * 100.0);
