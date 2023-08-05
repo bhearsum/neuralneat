@@ -6,6 +6,41 @@
 //!
 //! Much of this implementation was also guided by the [NEAT 1.2.1 source code](
 //! https://nn.cs.utexas.edu/?neat).
+//!
+//! # Basic usage:
+//!
+//! ```
+//! use neuralneat::{Genome, Pool, Trainer};
+//! use neuralneat::evaluation::TrainingData;
+//!
+//! // To do something useful, you need to decide what your training data is!
+//! fn load_training_data() -> Vec<TrainingData> {
+//!     return vec![];
+//! }
+//!
+//! fn main() {
+//!     let input_nodes = 5;
+//!     let output_nodes = 1;
+//!     // Create an initial pool of Genomes
+//!     let mut gene_pool = Pool::with_defaults(input_nodes, output_nodes);
+//!     
+//!     // Load the data that will be used to train and evolve the Genomes
+//!     let training_data: Vec<TrainingData> = load_training_data();
+//!     
+//!     // A Trainer can manage the process of training a population of Genomes
+//!     // over successive generations.
+//!     let mut trainer = Trainer::new(training_data);
+//!     
+//!     trainer.train(
+//!         &mut gene_pool,
+//!         // Train for 100 generations
+//!         100,
+//!     );
+//!
+//!     // The winner!
+//!     let best_genome = gene_pool.get_best_genome();
+//! }
+//! ```
 
 /// The [defaults] module contains the default values of all of the constants
 /// used by the [Pool] to create, mutate, and mate [Genomes](Genome).
@@ -18,7 +53,9 @@ pub mod evaluation;
 mod genome;
 mod pool;
 mod species;
+mod training;
 
 pub use genome::{Genome, GenomeStats};
 pub use pool::{Pool, PoolStats};
 pub use species::{Species, SpeciesStats};
+pub use training::Trainer;

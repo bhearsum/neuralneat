@@ -1,5 +1,5 @@
 /* This example will train a neural network that can sum its inputs */
-use neuralneat::{Genome, Pool};
+use neuralneat::{Genome, Pool, Trainer};
 use serde_json;
 use std::env;
 use std::fs::File;
@@ -29,18 +29,17 @@ fn main() {
 
         let training_data = load_training_data(TRAINING_DATA_STRING, 4, 1);
 
+        let mut trainer = Trainer::new(training_data);
+        // This function will be called once per Genome per piece of
+        // TrainingData in each generation, passing the values of the
+        // output nodes of the Genome as well as the expected result
+        // from the TrainingData.
+        trainer.evaluate_fn = adding_fitness_func;
+        trainer.hidden_activation = linear_activation;
+        trainer.output_activation = linear_activation;
+
         // Train over the course of 100 generations
-        gene_pool.train_population(
-            100,
-            &training_data,
-            // This function will be called once per Genome per piece of
-            // TrainingData in each generation, passing the values of the
-            // output nodes of the Genome as well as the expected result
-            // from the TrainingData.
-            adding_fitness_func,
-            Some(linear_activation),
-            Some(linear_activation),
-        );
+        trainer.train(&mut gene_pool, 100);
 
         let best_genome = gene_pool.get_best_genome();
 

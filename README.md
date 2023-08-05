@@ -19,42 +19,35 @@ cargo add neuralneat
 The usual flow of evolving a neural network with Neural NEAT is to create a `Pool`, test each `Genome` in the `Pool`, and then spawn a new generation before repeating this process as many times as you want or need. For example:
 
 ```
-let input_nodes = 5;
-let output_nodes = 1;
-// Create an initial pool of Genomes
-let gene_pool = Pool::with_defaults(input_nodes, output_nodes);
+use neuralneat::{Genome, Pool, Trainer};
+use neuralneat::evaluation::TrainingData;
 
-// Load the data that will be used to train and evolve the Genomes
-let training_data: Vec<TrainingData> = load_training_data();
-
-// This function is used to evaluate the outputs of the Genomes after being
-// fed each piece of training data.
-fn evaluate_fitness(outputs: &Vec<f32>, expected: &Vec<f32>) -> f32 {
-    assert_eq!(outputs.len(), expected.len());
-
-    let mut fitness = 0.0;
-    for i in outputs.len() {
-        if outputs[i] == expected[i] {
-            fitness += 1.0;
-        }
-    }
-
-    return fitness;
+// To do something useful, you need to decide what your training data is!
+fn load_training_data() -> Vec<TrainingData> {
+    return vec![];
 }
 
-gene_pool.train_population(
-    // Train for 100 generations
-    100,
-    // The training data
-    &training_data,
-    // The function to be called to evaluate how well a Genome is performing
-    evaluate_fitness,
-    None,
-    None,
-);
-
-// The winner!
-let best_genome = gene_pool.get_best_genome();
+fn main() {
+    let input_nodes = 5;
+    let output_nodes = 1;
+    // Create an initial pool of Genomes
+    let mut gene_pool = Pool::with_defaults(input_nodes, output_nodes);
+    
+    // Load the data that will be used to train and evolve the Genomes
+    let training_data: Vec<TrainingData> = load_training_data();
+    
+    // A Trainer can manage the process of training a population of Genomes
+    // over successive generations.
+    let mut trainer = Trainer::new(training_data);
+    
+    trainer.train(
+        &mut gene_pool,
+        // Train for 100 generations
+        100,
+    );
+    // The winner!
+    let best_genome = gene_pool.get_best_genome();
+}
 ```
 
 # Examples

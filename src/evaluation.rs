@@ -15,6 +15,19 @@ pub fn sigmoid(x: f32) -> f32 {
     return 1.0 / (1.0 + z.exp());
 }
 
+pub fn basic_eval(outputs: &Vec<f32>, expected: &Vec<f32>) -> f32 {
+    assert_eq!(outputs.len(), expected.len());
+
+    let mut fitness = 0.0;
+    for i in 0..outputs.len() {
+        if outputs[i] == expected[i] {
+            fitness += 1.0;
+        }
+    }
+
+    return fitness;
+}
+
 pub struct TrainingData {
     pub inputs: Vec<f32>,
     pub expected: Vec<f32>,
