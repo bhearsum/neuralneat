@@ -21,35 +21,40 @@ The usual flow of evolving a neural network with Neural NEAT is to create a `Poo
 ```
 let input_nodes = 5;
 let output_nodes = 1;
+// Create an initial pool of Genomes
 let gene_pool = Pool::with_defaults(input_nodes, output_nodes);
 
-for generation in 0..10 {
-    let total_species = gene_pool.len();
-    for s in 0..total_species {
-        let species = &mut gene_pool[s];
-        let genomes_in_species = species.len();
-        for g in 0..genomes_in_species {
-            let genome = &mut species[g];
+// Load the data that will be used to train and evolve the Genomes
+let training_data: Vec<TrainingData> = load_training_data();
 
-            let mut fitness = 0.0;
-            // Feed some training data to the genome, usually a number of times.
-            for test in training_data {
-                // Calling `evaluate` updates the "activated" values of each
-                // Gene in the Genome, most notably the "output" nodes that
-                // we use below to assess the performance of the Genome.
-                genome.evaluate(...);
-            
-                // Assess the fitness of the genome by examining its outputs
-                fitness += fitness(genome.get_outputs());
-            }
+// This function is used to evaluate the outputs of the Genomes after being
+// fed each piece of training data.
+fn evaluate_fitness(outputs: &Vec<f32>, expected: &Vec<f32>) -> f32 {
+    assert_eq!(outputs.len(), expected.len());
 
-            // Update the genome with the fitness value. This will be used to
-            // determine which Genomes will form the basis of the next generation.
-            genome.update_fitness(fitness);
+    let mut fitness = 0.0;
+    for i in outputs.len() {
+        if outputs[i] == expected[i] {
+            fitness += 1.0;
         }
     }
-    gene_pool.new_generation();
+
+    return fitness;
 }
+
+gene_pool.train_population(
+    // Train for 100 generations
+    100,
+    // The training data
+    &training_data,
+    // The function to be called to evaluate how well a Genome is performing
+    evaluate_fitness,
+    None,
+    None,
+);
+
+// The winner!
+let best_genome = gene_pool.get_best_genome();
 ```
 
 # Examples
@@ -57,6 +62,8 @@ for generation in 0..10 {
 Two simple examples are included with this library:
 
 * The `adding` example will train a neural network that can sum its inputs
+  * There is also an `adding_managed` variant that trains the same type of network
+    through the `train_population` interface described above.
 * The `compare` example will train a neural network that predicts whether or not its
   first input is larger than its second input.
 
