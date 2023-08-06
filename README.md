@@ -19,8 +19,7 @@ cargo add neuralneat
 The usual flow of evolving a neural network with Neural NEAT is to create a `Pool`, test each `Genome` in the `Pool`, and then spawn a new generation before repeating this process as many times as you want or need. For example:
 
 ```
-use neuralneat::{Genome, Pool, Trainer};
-use neuralneat::evaluation::TrainingData;
+use neuralneat::{Genome, Pool, Trainer, TrainingData};
 
 // To do something useful, you need to decide what your training data is!
 fn load_training_data() -> Vec<TrainingData> {

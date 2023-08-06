@@ -3,9 +3,10 @@ use std::fmt;
 use std::ops::{Index, IndexMut};
 
 use crate::defaults::*;
-use crate::evaluation::{ActivationFn, EvaluationFn, TrainingData};
+use crate::evaluation::{ActivationFn, EvaluationFn};
 use crate::genome::Genome;
 use crate::species::{Species, SpeciesStats};
+use crate::training::TrainingData;
 
 /// Basic statistics about a [Pool] and the [Species] and [Genomes](Genome) contained within it.
 pub struct PoolStats {
@@ -41,7 +42,7 @@ pub struct Pool {
     age_significance: f32,
     survival_threshold: f32,
     // Container for all Species (which in turn hold all of the Genomes)
-    species: Vec<Species>,
+    pub species: Vec<Species>,
     innovation: u64,
     // Statistics about the Pool
     max_fitness: f32,

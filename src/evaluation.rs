@@ -27,8 +27,3 @@ pub fn basic_eval(outputs: &Vec<f32>, expected: &Vec<f32>) -> f32 {
 
     return fitness;
 }
-
-pub struct TrainingData {
-    pub inputs: Vec<f32>,
-    pub expected: Vec<f32>,
-}

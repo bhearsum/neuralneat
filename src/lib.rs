@@ -10,8 +10,7 @@
 //! # Basic usage:
 //!
 //! ```
-//! use neuralneat::{Genome, Pool, Trainer};
-//! use neuralneat::evaluation::TrainingData;
+//! use neuralneat::{Genome, Pool, Trainer, TrainingData};
 //!
 //! // To do something useful, you need to decide what your training data is!
 //! fn load_training_data() -> Vec<TrainingData> {
@@ -58,4 +57,4 @@ mod training;
 pub use genome::{Genome, GenomeStats};
 pub use pool::{Pool, PoolStats};
 pub use species::{Species, SpeciesStats};
-pub use training::Trainer;
+pub use training::{TrainingData, Trainer};

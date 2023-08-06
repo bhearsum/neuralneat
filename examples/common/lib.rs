@@ -2,7 +2,7 @@
 // warnings. It's just example code so we may as well just disable it...
 #![allow(dead_code)]
 
-use neuralneat::evaluation::TrainingData;
+use neuralneat::TrainingData;
 
 pub fn load_training_data(
     data_as_string: &str,
