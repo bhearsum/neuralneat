@@ -1,4 +1,5 @@
 use log::{debug, info};
+use std::collections::hash_map::{HashMap, Keys};
 use std::fmt;
 use std::ops::{Index, IndexMut};
 
@@ -12,6 +13,7 @@ pub struct PoolStats {
     pub max_fitness: f32,
     pub max_fitness_ever: f32,
     pub avg_fitness: f32,
+    // TODO: convert to HashMap if we end up storing Species as one
     pub species_stats: Vec<SpeciesStats>,
 }
 
@@ -41,7 +43,9 @@ pub struct Pool {
     age_significance: f32,
     survival_threshold: f32,
     // Container for all Species (which in turn hold all of the Genomes)
-    species: Vec<Species>,
+    // TODO: don't let this be public
+    pub(crate) species: HashMap<usize, Species>,
+    next_species_id: usize,
     innovation: u64,
     // Statistics about the Pool
     max_fitness: f32,
@@ -95,7 +99,8 @@ impl Pool {
             species_dropoff_age,
             age_significance,
             survival_threshold,
-            species: vec![Species::empty()],
+            species: HashMap::new(),
+            next_species_id: 0,
             innovation: 0,
             max_fitness: 0.0,
             max_fitness_ever: 0.0,
@@ -169,11 +174,10 @@ impl Pool {
 
         for generation in 0..generations {
             info!("Evaluating generation {}", generation + 1);
-            let total_species = self.len();
-            for s in 0..total_species {
+            for s in self.species.keys().map(|k| *k).collect::<Vec<usize>>() {
                 let species = &mut self[s];
                 let genomes_in_species = species.len();
-                for g in 0..genomes_in_species {
+                for g in species.genomes.keys().map(|k| *k).collect::<Vec<usize>>() {
                     let genome = &mut species[g];
 
                     let mut fitness = 0.0;
@@ -209,7 +213,7 @@ impl Pool {
             max_fitness: self.max_fitness,
             max_fitness_ever: self.max_fitness_ever,
             avg_fitness: self.avg_fitness,
-            species_stats: self.species.iter().map(|s| s.stats()).collect(),
+            species_stats: self.species.values().map(|s| s.stats()).collect(),
         };
     }
 
@@ -218,20 +222,24 @@ impl Pool {
         return self.species.len();
     }
 
+    pub fn species_ids(&self) -> Keys<'_, usize, Species> {
+        return self.species.keys();
+    }
+
     /// Returns the total number of [Genomes](Genome) in the Pool.
     /// Note that this _should_ always be the same as the
     /// [default](crate::defaults) population size, but this method
     /// will always return the real number of [Genomes](Genome) in the Pool.
     pub fn population_size(&self) -> usize {
-        return self.species.iter().map(|s| s.genomes.len()).sum::<usize>();
+        return self.species.values().map(|s| s.genomes.len()).sum::<usize>();
     }
 
-    /// Returns the best [Genome] in the current population. (Earlier
+    /// Returns a clone of the best [Genome] in the current population. (Earlier
     /// generations could theoretically have had a better [Genome]. If it is
     /// important to have the best [Genome] _ever_, you should call this method
     /// once per generation to check each generation's best [Genome].)
     pub fn get_best_genome(&self) -> Genome {
-        let best_species = self.species.iter().reduce(|s1, s2| {
+        let best_species = self.species.values().reduce(|s1, s2| {
             if s1.max_fitness > s2.max_fitness {
                 return s1;
             }
@@ -240,7 +248,7 @@ impl Pool {
         let best_genome = best_species
             .unwrap()
             .genomes
-            .iter()
+            .values()
             .reduce(|g1, g2| {
                 if g1.max_fitness > g2.max_fitness {
                     return g1;
@@ -265,27 +273,28 @@ impl Pool {
         info!("Creating new generation");
         info!("Initial pool state: {:?}", self);
         // Calculate some basic statistics needed when creating the next generation.
-        self.species.iter_mut().for_each(|s| s.set_max_fitness());
+        self.species.values_mut().for_each(|s| s.set_max_fitness());
         debug!("After setting max fitness: {:?}", self);
-        self.species.iter_mut().for_each(|s| s.set_avg_fitness());
+        self.species.values_mut().for_each(|s| s.set_avg_fitness());
         debug!("After setting avg fitness: {:?}", self);
         // Sort species by max fitness (using raw fitness that doesn't get adjusted for anything)
-        self.species.sort_unstable_by(|s1, s2| {
-            s2.max_fitness
-                .partial_cmp(&s1.max_fitness)
+        let mut sorted_species: Vec<usize> = self.species.keys().map(|k| *k).collect::<Vec<_>>();
+        sorted_species.sort_unstable_by(|k1, k2| {
+            self.species[k2].max_fitness
+                .partial_cmp(&self.species[k1].max_fitness)
                 .unwrap_or_else(|| {
-                    panic!("INTERNAL ERROR: Failed to compare two species' max fitness: {s1:?}, {s2:?}");
+                    panic!("INTERNAL ERROR: Failed to compare two species' max fitness: {k1:?}, {k2:?}");
                 })
         });
-        debug!("After sorting species: {:?}", self);
+        debug!("Sorted species keys: {:?}", sorted_species);
 
-        self.max_fitness = self.species[0].max_fitness;
+        self.max_fitness = self.species[&sorted_species[0]].max_fitness;
         if self.max_fitness > self.max_fitness_ever {
             self.max_fitness_ever = self.max_fitness;
         }
 
         let mut obliterated = false;
-        for s in &mut self.species {
+        for s in &mut self.species.values_mut() {
             // Every 30 generations, flag the species with the lowest fitness score that
             // is also over the age of 20 for obliteration
             if !obliterated && self.generation % 30 == 0 && s.age >= 20 {
@@ -297,16 +306,17 @@ impl Pool {
         }
         debug!("After adjusting fitness: {:?}", self);
 
-        let total_genomes = self.species.iter().map(|s| s.genomes.len()).sum::<usize>() as u32;
+        let total_genomes = self.species.values().map(|s| s.genomes.len()).sum::<usize>() as u32;
 
-        let mut parents_per_species: Vec<usize> = vec![];
-        for s in &mut self.species {
+        let mut parents_per_species: HashMap<usize, usize> = HashMap::new();
+        let mut sorted_species_genomes: HashMap<usize, Vec<usize>> = HashMap::new();
+        for (k, s) in &mut self.species.iter_mut() {
             // - Sort organisms by adjusted fitness
-            s.sort_by_fitness();
+            sorted_species_genomes.insert(*k, s.sort_by_fitness());
             // - Decide how many organisms in the species may reproduce based on survival threshold
             //   and population size
             parents_per_species
-                .push(((self.survival_threshold * s.genomes.len() as f32) as usize) + 1);
+                .insert(*k, ((self.survival_threshold * s.genomes.len() as f32) as usize) + 1);
             // The original NEAT 1.2.1 implementation marks organisms for death at this point.
             // This is done by using the sorted organisms and `num_parents` from earlier steps. The top
             // `num_parents` organisms are left alone; the rest are marked for death We're doing this
@@ -317,25 +327,30 @@ impl Pool {
 
         debug!("After sorting and computing parents: {:?}", self);
         debug!("parents_per_species: {:?}", parents_per_species);
+        debug!("sorted_species_gneomes: {:?}", sorted_species_genomes);
         // Compute the overall average fitness by summing the the fitness of all organisms
         // in the population and dividing it by the number of organisms.
         self.avg_fitness = self
             .species
-            .iter()
-            .map(|s| s.genomes.iter().map(|g| g.fitness).sum::<f32>())
+            .values()
+            .map(|s| s.genomes.values().map(|g| g.fitness).sum::<f32>())
             .sum::<f32>()
             / total_genomes as f32;
 
         debug!("self.avg_fitness: {}", self.avg_fitness);
-        let mut offspring_per_species_genome: Vec<Vec<f32>> = vec![];
+        let mut offspring_per_species_genome: HashMap<usize, Vec<f32>> = HashMap::new();
         // Compute the expected number of offspring for each organism by dividing its fitness
         // by the overall average fitness.
-        for i in 0..self.species.len() {
-            offspring_per_species_genome.push(vec![]);
-            for j in 0..self.species[i].genomes.len() {
-                debug!("genome fitness: {}", self.species[i].genomes[j].fitness);
-                offspring_per_species_genome[i]
-                    .push(self.species[i].genomes[j].fitness / self.avg_fitness);
+        for k in self.species.keys() {
+            offspring_per_species_genome.insert(*k, vec![]);
+            for j in self.species[k].genomes.keys() {
+                debug!("genome fitness: {}", self.species[k].genomes[j].fitness);
+                let n = self.species.get(&k).unwrap().genomes[j].fitness / self.avg_fitness;
+                if n == f32::NAN {
+                    offspring_per_species_genome.get_mut(&k).unwrap().push(0.0);
+                } else {
+                    offspring_per_species_genome.get_mut(&k).unwrap().push(n);
+                }
             }
         }
 
@@ -348,11 +363,10 @@ impl Pool {
         // - Adding the fractional parts of the expected offspring for each organism
         // - If the fractional parts are > 1.0, add additional offspring for each
         //   whole number past that (eg: 2.3 gives 2 additional offspring for that species).
-        let mut offspring_per_species: Vec<u32> = vec![];
+        let mut offspring_per_species: HashMap<usize, u32> = HashMap::new();
         let mut highest_expecting_offspring = 0;
-        let mut highest_expecting_index = 0;
-        let mut i = 0;
-        for species_offspring in offspring_per_species_genome {
+        let mut highest_expecting_key = offspring_per_species_genome.keys().next().unwrap();
+        for (k, species_offspring) in offspring_per_species_genome.iter() {
             let mut offspring: u32 = 0;
             let mut skim: f32 = 0.0;
             for genome_offspring in species_offspring {
@@ -362,18 +376,17 @@ impl Pool {
             if skim >= 1.0 {
                 offspring += skim.floor() as u32;
             }
-            offspring_per_species.push(offspring);
+            offspring_per_species.insert(*k, offspring);
             if offspring > highest_expecting_offspring {
-                highest_expecting_index = i;
+                highest_expecting_key = k;
                 highest_expecting_offspring = offspring;
             }
-            i += 1;
         }
 
         // Some precision is lost in skim above for some reason...if we don't have enough
         // offspring allocated, give one to the species expecting the most.
-        while offspring_per_species.iter().sum::<u32>() < self.population_size as u32 {
-            offspring_per_species[highest_expecting_index] += 1;
+        while offspring_per_species.values().sum::<u32>() < self.population_size as u32 {
+            *offspring_per_species.get_mut(highest_expecting_key).unwrap() += 1;
         }
 
         // In the first generation this ends up being 1 for each genome...which I guess makes sense
@@ -397,16 +410,20 @@ impl Pool {
 
         // Kill off organisms "marked" for death (see comments above when `parents_per_species` is
         // filled out.
-        for i in 0..self.species.len() {
-            let num_parents = parents_per_species[i];
-            self.species[i].genomes.truncate(num_parents);
+        for k in self.species.keys().map(|k| *k).collect::<Vec<usize>>() {
+            let num_parents = parents_per_species[&k];
+            let mut to_kill = sorted_species_genomes[&k].clone();
+            to_kill.drain(0..num_parents);
+            for g in to_kill {
+                self.species.get_mut(&k).unwrap().genomes.remove(&g);
+            }
         }
         debug!("After removing genomes that will not reproduce: {:?}", self);
 
         // Reproduce each species
-        for i in 0..self.species.len() {
-            for g in self.species[i].reproduce(
-                offspring_per_species[i],
+        for k in self.species.keys().map(|k| *k).collect::<Vec<usize>>() {
+            for g in self.species[&k].reproduce(
+                offspring_per_species[&k],
                 &self.species,
                 &mut self.innovation,
                 self.mut_only_rate,
@@ -426,8 +443,11 @@ impl Pool {
         debug!("After adding new genomes from reproduction: {:?}", self);
 
         // Remove all organisms from the previous generation
-        for i in 0..parents_per_species.len() {
-            self.species[i].genomes.drain(0..parents_per_species[i]);
+        for i in parents_per_species.keys().map(|k| *k) {
+            let to_kill = sorted_species_genomes[&i].clone();
+            for g in to_kill {
+                self.species.get_mut(&i).unwrap().genomes.remove(&g);
+            }
         }
         debug!(
             "After removing remaining genomes from previous generation: {:?}",
@@ -436,16 +456,16 @@ impl Pool {
 
         // Remove any species that are now empty; age the remaining ones.
         let mut to_remove: Vec<usize> = vec![];
-        for i in 0..self.species.len() {
-            if self.species[i].len() == 0 {
-                to_remove.push(i);
+        for k in self.species.keys().map(|k| *k).collect::<Vec<usize>>() {
+            if self.species.get(&k).unwrap().len() == 0 {
+                to_remove.push(k);
             } else {
-                self.species[i].age += 1;
+                self.species.get_mut(&k).unwrap().age += 1;
             }
         }
 
-        for i in to_remove.iter().rev() {
-            self.species.remove(*i);
+        for k in to_remove.iter() {
+            self.species.remove(k).unwrap();
         }
         debug!(
             "After removing dead species and aging the others: {:?}",
@@ -456,7 +476,7 @@ impl Pool {
     }
 
     fn add_genome(&mut self, mut genome: Genome) {
-        for s in &mut self.species {
+        for s in &mut self.species.values_mut() {
             if s.is_same_species(
                 &mut genome,
                 self.species_threshold,
@@ -468,7 +488,8 @@ impl Pool {
                 return;
             }
         }
-        self.species.push(Species::new(genome));
+        self.species.insert(self.next_species_id, Species::new(genome));
+        self.next_species_id += 1;
     }
 }
 
@@ -476,13 +497,13 @@ impl Index<usize> for Pool {
     type Output = Species;
 
     fn index(&self, index: usize) -> &Self::Output {
-        return &self.species[index];
+        return self.species.get(&index).unwrap();
     }
 }
 
 impl IndexMut<usize> for Pool {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        return &mut self.species[index];
+        return self.species.get_mut(&index).unwrap();
     }
 }
 
@@ -509,27 +530,30 @@ mod tests {
         return Genome::new(inputs, outputs, inno, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     }
 
+    fn new_genomes(fitnesses: Vec<f32>) -> HashMap<usize, Genome> {
+        let mut innovation = 0;
+        let mut genomes: HashMap<usize, Genome> = HashMap::new();
+        fitnesses.iter().enumerate().map(|(i, f)| {
+            let mut g = new_genome(1, 1, &mut innovation);
+            g.fitness = *f;
+            g.max_fitness = *f;
+            genomes.insert(i, g);
+        }).collect::<Vec<_>>();
+        return genomes;
+    }
+
     #[test]
     fn test_get_best_genome() {
         let mut innovation = 0;
+        let mut species: HashMap<usize, Species> = HashMap::new();
         let mut s = Species::empty();
-        s.genomes = [50.0, 30.0, 10.0, 70.0, 40.0, 20.0, 100.0, 5.0]
-            .iter()
-            .map(|f| {
-                let mut g = new_genome(1, 1, &mut innovation);
-                g.max_fitness = *f;
-                return g;
-            })
-            .collect();
+        s.genomes = new_genomes(vec![50.0, 30.0, 10.0, 70.0, 40.0, 20.0, 100.0, 5.0]);
+        s.max_fitness = 100.0;
+        species.insert(0, s);
         let mut s2 = Species::empty();
-        s2.genomes = [5.0, 13.0, 1.0, 80.0, 40.0, 30.0, 20.0]
-            .iter()
-            .map(|f| {
-                let mut g = new_genome(1, 1, &mut innovation);
-                g.max_fitness = *f;
-                return g;
-            })
-            .collect();
+        s2.genomes = new_genomes(vec![5.0, 13.0, 1.0, 80.0, 40.0, 30.0, 20.0]);
+        s2.max_fitness = 80.0;
+        species.insert(1, s2);
         let pool = Pool {
             population_size: 8,
             connection_mut_rate: DEFAULT_CONNECTION_MUTATION_CHANCE,
@@ -549,7 +573,8 @@ mod tests {
             species_dropoff_age: DEFAULT_DROPOFF_AGE,
             age_significance: DEFAULT_AGE_SIGNIFICANCE,
             survival_threshold: DEFAULT_SURVIVAL_THRESHOLD,
-            species: vec![s],
+            species: species,
+            next_species_id: 2,
             innovation: 0,
             max_fitness: 0.0,
             max_fitness_ever: 0.0,

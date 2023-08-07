@@ -46,11 +46,10 @@ impl Trainer {
 
         for generation in 0..generations {
             info!("Evaluating generation {}", generation + 1);
-            let total_species = gene_pool.len();
-            for s in 0..total_species {
+            for s in gene_pool.species.keys().map(|k| *k).collect::<Vec<usize>>() {
                 let species = &mut gene_pool[s];
                 let genomes_in_species = species.len();
-                for g in 0..genomes_in_species {
+                for g in species.genome_ids().map(|g| *g).collect::<Vec<usize>>() {
                     let genome = &mut species[g];
 
                     let mut fitness = 0.0;

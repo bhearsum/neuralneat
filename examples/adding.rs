@@ -41,10 +41,10 @@ fn main() {
             let total_species = gene_pool.len();
             // As genomes diverge in structure and configuration, they will
             // be divided into separate species.
-            for s in 0..total_species {
+            for s in gene_pool.species_ids().map(|k| *k).collect::<Vec<usize>>() {
                 let species = &mut gene_pool[s];
                 let genomes_in_species = species.len();
-                for g in 0..genomes_in_species {
+                for g in species.genome_ids().map(|k| *k).collect::<Vec<usize>>() {
                     let genome = &mut species[g];
 
                     let mut fitness = 0.0;

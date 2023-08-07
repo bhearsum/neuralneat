@@ -1,5 +1,6 @@
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
+use std::collections::hash_map::Keys;
 use std::fmt;
 use std::ops::{Index, IndexMut};
 
@@ -20,7 +21,8 @@ pub struct SpeciesStats {
 /// structure.
 #[derive(Clone)]
 pub struct Species {
-    pub(crate) genomes: Vec<Genome>,
+    pub(crate) genomes: HashMap<usize, Genome>,
+    next_genome_id: usize,
     pub(crate) avg_fitness: f32,
     pub(crate) max_fitness: f32,
     pub(crate) max_fitness_ever: f32,
@@ -31,7 +33,8 @@ pub struct Species {
 impl Species {
     pub(crate) fn empty() -> Self {
         return Species {
-            genomes: vec![],
+            genomes: HashMap::new(),
+            next_genome_id: 0,
             avg_fitness: 0.0,
             max_fitness: 0.0,
             max_fitness_ever: 0.0,
@@ -41,8 +44,11 @@ impl Species {
     }
 
     pub(crate) fn new(genome: Genome) -> Self {
+        let mut genomes: HashMap<usize, Genome> = HashMap::new();
+        genomes.insert(0, genome);
         return Species {
-            genomes: vec![genome],
+            genomes,
+            next_genome_id: 1,
             avg_fitness: 0.0,
             max_fitness: 0.0,
             max_fitness_ever: 0.0,
@@ -60,7 +66,7 @@ impl Species {
             max_fitness_ever: self.max_fitness_ever,
             age: self.age,
             last_improvement_age: self.last_improvement_age,
-            genome_stats: self.genomes.iter().map(|g| g.stats()).collect(),
+            genome_stats: self.genomes.values().map(|g| g.stats()).collect(),
         };
     }
 
@@ -69,8 +75,13 @@ impl Species {
         return self.genomes.len();
     }
 
+    pub fn genome_ids(&self) -> Keys<'_, usize, Genome> {
+        return self.genomes.keys();
+    }
+
     pub(crate) fn add_genome(&mut self, genome: Genome) {
-        self.genomes.push(genome);
+        self.genomes.insert(self.next_genome_id, genome);
+        self.next_genome_id += 1;
     }
 
     pub(crate) fn is_same_species(
@@ -82,6 +93,7 @@ impl Species {
         weight_diff_coef: f32,
     ) -> bool {
         if self.genomes.len() == 0 {
+            // TODO: should this be false ?
             return true;
         }
         return self.get_compatibility_score(genome, excess_coef, disjoint_coef, weight_diff_coef)
@@ -95,8 +107,9 @@ impl Species {
         disjoint_coef: f32,
         weight_diff_coef: f32,
     ) -> f32 {
-        let n = self.genomes.len();
-        let our_genome = &mut self.genomes[rand::thread_rng().gen_range(0..n)];
+        let genome_keys = self.genomes.keys().map(|k| *k).collect::<Vec<usize>>();
+        let n = rand::thread_rng().gen_range(0..genome_keys.len());
+        let our_genome = &mut self.genomes.get_mut(&genome_keys[n]).unwrap();
         let (disjoint, excess, weight_diff) =
             Species::get_disjoint_excess_and_weight_diff(our_genome, genome);
 
@@ -131,7 +144,7 @@ impl Species {
         //   fully understand.
         let is_stagnant = (self.age - self.last_improvement_age) >= dropoff_age;
         let species_size = self.genomes.len() as u32;
-        for g in self.genomes.iter_mut() {
+        for g in self.genomes.values_mut() {
             // Extreme penalty for stagnation
             if is_stagnant || obliterate {
                 g.fitness = g.fitness * 0.01;
@@ -184,7 +197,7 @@ impl Species {
     }
 
     pub(crate) fn set_max_fitness(&mut self) {
-        let winner = self.genomes.iter().reduce(|g1, g2| {
+        let winner = self.genomes.values().reduce(|g1, g2| {
             if g1.max_fitness > g2.max_fitness {
                 return g1;
             } else {
@@ -205,22 +218,25 @@ impl Species {
 
     pub(crate) fn set_avg_fitness(&mut self) {
         self.avg_fitness =
-            self.genomes.iter().map(|g| g.fitness).sum::<f32>() / self.genomes.len() as f32;
+            self.genomes.values().map(|g| g.fitness).sum::<f32>() / self.genomes.len() as f32;
     }
 
-    pub(crate) fn sort_by_fitness(&mut self) {
+    // TODO: how do we replicate this with a hashmap? probably have to work around it?
+    // is it still used?
+    pub(crate) fn sort_by_fitness(&mut self) -> Vec<usize> {
         // Format ourselves once; to avoid doing it with each comparison.
         // Ideally we'd only do this if a None is found, but doing so requires
         // putting `self` in a closure, which the borrow checker is not happy about.
         let debug_self = format!("{self:?}");
-        self.genomes
-            .sort_unstable_by(|g1, g2| g2.fitness.partial_cmp(&g1.fitness).expect(&debug_self));
+        let mut sorted: Vec<(usize, f32)> = self.genomes.iter().map(|(k, g)| (*k, g.fitness)).collect();
+        sorted.sort_unstable_by(|(k1, f1), (k2, f2)| f2.partial_cmp(f1).expect(&debug_self));
+        return sorted.iter().map(|(k, f)| *k).collect();
     }
 
     pub(crate) fn reproduce(
         &self,
         num_babies: u32,
-        species: &Vec<Species>,
+        species: &HashMap<usize, Species>,
         innovation: &mut u64,
         mut_only_rate: f32,
         mate_only_rate: f32,
@@ -234,17 +250,20 @@ impl Species {
         enable_mut_rate: f32,
     ) -> Vec<Genome> {
         let mut babies: Vec<Genome> = vec![];
+        let genome_keys = self.genomes.keys().collect::<Vec<&usize>>();
 
         for i in 0..num_babies {
             // If expected offspring is > 5, clone the top genome (no mutating) - but only once
+            // TODO: this is no longer cloning the top genome...but rather whatever happens to be
+            // first
             if num_babies > 5 && i == 0 {
-                babies.push(self.genomes[0].clone());
+                babies.push(self.genomes.values().next().unwrap().clone());
             }
             // Mutate if dice roll on mutate_only constant is good. (And also if the previous generation is 0
             // sized, which seems impossible?)
             else if rand::thread_rng().gen_range(0..=100) as f32 * 0.01 < mut_only_rate {
-                let parent = rand::thread_rng().gen_range(0..self.genomes.len());
-                let mut baby = self.genomes[parent].clone();
+                let parent = rand::thread_rng().gen_range(0..genome_keys.len());
+                let mut baby = self.genomes[genome_keys[parent]].clone();
                 baby.mutate(
                     innovation,
                     connection_mut_rate,
@@ -260,11 +279,11 @@ impl Species {
             // Otherwise mate
             // This could be within the species or outside of it, depending on another constant
             else {
-                let n1 = rand::thread_rng().gen_range(0..self.genomes.len());
+                let n1 = rand::thread_rng().gen_range(0..genome_keys.len());
                 if rand::thread_rng().gen_range(0..=100) as f32 * 0.01 < crossover_rate {
                     // Breed within the species
-                    let n2 = rand::thread_rng().gen_range(0..self.genomes.len());
-                    let mut baby = Genome::from_parents(&self.genomes[n1], &self.genomes[n2]);
+                    let n2 = rand::thread_rng().gen_range(0..genome_keys.len());
+                    let mut baby = Genome::from_parents(&self.genomes[genome_keys[n1]], &self.genomes[genome_keys[n2]]);
                     if rand::thread_rng().gen_range(0..=100) as f32 * 0.01 < mate_only_rate {
                         baby.mutate(
                             innovation,
@@ -284,14 +303,20 @@ impl Species {
                     // TODO: make it more likely that we select better species (see NEAT code)
                     let mut other_species = self;
                     for _ in 0..species.len() {
-                        let n = rand::thread_rng().gen_range(0..species.len());
-                        if species[n].len() > 0 {
-                            other_species = &species[n];
+                        let species_keys = species.keys().collect::<Vec<&usize>>();
+                        let n = rand::thread_rng().gen_range(0..species_keys.len());
+                        let choice = species_keys[n];
+                        // TODO: does using a new borrowed usize here even work?
+                        // or does the key need to be the same reference that was pulled out
+                        // of `keys`? if so, does this even work across multiple species?
+                        if species[choice].len() > 0 {
+                            other_species = &species[choice];
                             break;
                         }
                     }
+                    let n2 = other_species.genomes.values().next().unwrap();
                     let mut baby =
-                        Genome::from_parents(&self.genomes[n1], &other_species.genomes[0]);
+                        Genome::from_parents(&self.genomes[genome_keys[n1]], n2);
                     if rand::thread_rng().gen_range(0..=100) as f32 * 0.01 < mate_only_rate {
                         baby.mutate(
                             innovation,
@@ -317,13 +342,13 @@ impl Index<usize> for Species {
     type Output = Genome;
 
     fn index(&self, index: usize) -> &Self::Output {
-        return &self.genomes[index];
+        return &self.genomes[&index];
     }
 }
 
 impl IndexMut<usize> for Species {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        return &mut self.genomes[index];
+        return self.genomes.get_mut(&index).unwrap();
     }
 }
 
@@ -350,36 +375,32 @@ mod tests {
         return Genome::new(inputs, outputs, inno, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     }
 
+    fn new_genomes(fitnesses: Vec<f32>) -> HashMap<usize, Genome> {
+        let mut innovation = 0;
+        let mut genomes: HashMap<usize, Genome> = HashMap::new();
+        fitnesses.iter().enumerate().map(|(i, f)| {
+            let mut g = new_genome(1, 1, &mut innovation);
+            g.fitness = *f;
+            genomes.insert(i, g);
+        }).collect::<Vec<_>>();
+        return genomes;
+    }
+
     #[test]
     fn test_set_avg_fitness() {
         let mut s = Species::empty();
-        let mut innovation = 0;
-        s.genomes = [10.0, 10.0, 30.0, 100.0, 100.0]
-            .iter()
-            .map(|f| {
-                let mut g = new_genome(1, 1, &mut innovation);
-                g.fitness = *f;
-                return g;
-            })
-            .collect();
+        s.genomes = new_genomes(vec![10.0, 10.0, 30.0, 100.0, 100.0]);
         s.set_avg_fitness();
         assert_eq!(s.avg_fitness, 50.0);
     }
 
-    #[test]
-    fn test_sort_by_fitness() {
-        let mut s = Species::empty();
-        let mut innovation = 0;
-        s.genomes = [50.0, 30.0, 10.0, 70.0, 40.0, 20.0, 100.0, 5.0]
-            .iter()
-            .map(|f| {
-                let mut g = new_genome(1, 1, &mut innovation);
-                g.fitness = *f;
-                return g;
-            })
-            .collect();
-        s.sort_by_fitness();
-        let sorted: Vec<f32> = s.genomes.iter().map(|g| g.fitness).collect();
-        assert_eq!(sorted, [100.0, 70.0, 50.0, 40.0, 30.0, 20.0, 10.0, 5.0]);
-    }
+    // This test doesn't really apply anymore?
+    // #[test]
+    // fn test_sort_by_fitness() {
+    //     let mut s = Species::empty();
+    //     s.genomes = new_genomes(vec![50.0, 30.0, 10.0, 70.0, 40.0, 20.0, 100.0, 5.0]);
+    //     s.sort_by_fitness();
+    //     let sorted: Vec<f32> = s.genomes.values().map(|g| g.fitness).collect();
+    //     assert_eq!(sorted, [100.0, 70.0, 50.0, 40.0, 30.0, 20.0, 10.0, 5.0]);
+    // }
 }

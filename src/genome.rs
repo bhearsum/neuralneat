@@ -500,7 +500,7 @@ impl fmt::Display for Genome {
 
 impl fmt::Debug for Genome {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        return write!(f, "Network: {:?}", Dot::new(&self.network));
+        return write!(f, "raw: {}, Network: {:?}", self.raw_fitness, Dot::new(&self.network));
     }
 }
 

@@ -15,7 +15,12 @@
 //!
 //! // To do something useful, you need to decide what your training data is!
 //! fn load_training_data() -> Vec<TrainingData> {
-//!     return vec![];
+//!     return vec![
+//!         TrainingData {
+//!             inputs: vec![1.0, 1.0, 1.0, 1.0, 1.0],
+//!             expected: vec![5.0],
+//!         }
+//!     ];
 //! }
 //!
 //! fn main() {
